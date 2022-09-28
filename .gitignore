@@ -12,3 +12,6 @@ result
 weights/
 scripts/
 demos/
+*.pt
+*.ptl
+*.ipynb_checkpoints/
