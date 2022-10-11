@@ -19,4 +19,8 @@ Our goal is to implement the optimizations discussed in MobiVQA on top of the Vi
 * Another example of scripting a "complex" PyTorch translation model -- <https://colab.research.google.com/drive/1HiICg6jRkBnr5hvK2-VnMi88Vi9pUzEJ>
 * (and finally) PyTorch documentation on torchscript -- <https://pytorch.org/tutorials/beginner/Intro_to_TorchScript_tutorial.html#introduction-to-torchscript>
 
+# Android app
+
+The `HelloWorld` directory links to android app submodule -- <https://github.com/priyamtejaswin/HelloWorld>. This app can be built and tested on Android Studio independently. So far, it implements the Question Preprocessor (which needed to be implemented in pure Java).
+
 -- Priyam, Rishubh, Bi
