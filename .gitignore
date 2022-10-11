@@ -15,3 +15,4 @@ demos/
 *.pt
 *.ptl
 *.ipynb_checkpoints/
+.DS_Store
