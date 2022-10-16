@@ -86,23 +86,17 @@ class ViLTransformerSS(pl.LightningModule):
         text_masks = batch[f"text_masks"]
         text_embeds = self.text_embeddings(text_ids)
 
-        if image_embeds is None and image_masks is None:
-            img = batch[imgkey]
-            (
+        img = batch[imgkey]
+        (
                 image_embeds,
                 image_masks,
                 patch_index,
                 image_labels,
-            ) = self.transformer.visual_embed(
+        ) = self.transformer.visual_embed(
                 img,
                 max_image_len=self.hparams.config["max_image_len"],
                 mask_it=mask_image,
-            )
-        else:
-            patch_index, image_labels = (
-                None,
-                None,
-            )
+        )
 
         text_embeds, image_embeds = (
             text_embeds + self.token_type_embeddings(torch.zeros_like(text_masks)),

@@ -562,15 +562,8 @@ class VisionTransformer(nn.Module):
         x_mask = (_x.sum(dim=1) != 0).float()[:, None, :, :]
         x_mask = F.interpolate(x_mask, size=(x.shape[2], x.shape[3])).long()
 
-        print("xmask shape: ", x_mask.shape)
-
         x_h = x_mask[:, 0].sum(dim=1)[:, 0]
         x_w = x_mask[:, 0].sum(dim=2)[:, 0]
-
-        print("original shape: ", _x.shape)
-        print("patched shape: ", x.shape)
-        print("x_h", x_h)
-        print("x_w", x_w)
 
         B, C, H, W = x.shape
         spatial_pos = (
@@ -610,13 +603,13 @@ class VisionTransformer(nn.Module):
         x_mask = x_mask.flatten(1)
 
         eff = x_h * x_w
-        max_image_len = min(eff.max(), max_image_len)
+        print("eff: ", eff)
+        print("max img len: ", max_image_len)
+        max_image_len = eff.max()
 
         valid_idx = x_mask.nonzero(as_tuple=False)
         non_valid_idx = (1 - x_mask).nonzero(as_tuple=False)
         unique_rows = valid_idx[:, 0].unique()
-
-        print("unique rows", unique_rows)
 
         valid_row_idx = valid_row_indices(valid_idx, unique_rows)
         non_valid_row_idx = non_valid_row_indices(non_valid_idx, unique_rows)
@@ -625,21 +618,7 @@ class VisionTransformer(nn.Module):
         non_valid_nums = [v.size(0) for v in non_valid_row_idx]
         pad_nums = [max_image_len - v for v in valid_nums]
 
-        # select = list()
-        # for i, (v, nv, p) in enumerate(zip(valid_nums, non_valid_nums, pad_nums)):
-        #     if p <= 0:
-        #         valid_choice = torch.multinomial(torch.ones(v).float(), max_image_len)
-        #         select.append(valid_row_idx[i][valid_choice])
-        #     else:
-        #         pad_choice = torch.multinomial(
-        #             torch.ones(nv).float(), p, replacement=True
-        #         )
-        #         select.append(
-        #             torch.cat(
-        #                 [valid_row_idx[i], non_valid_row_idx[i][pad_choice]], dim=0,
-        #             )
-        #         )
-        select = select_rows(valid_nums,non_valid_nums, pad_nums, valid_row_idx, non_valid_row_idx, max_image_len)
+        select = select_rows(valid_nums[0],non_valid_nums[0], pad_nums[0], valid_row_idx[0], non_valid_row_idx[0], max_image_len)
 
         select = torch.cat(select, dim=0)
         x = x[select[:, 0], select[:, 1]].view(B, -1, C)
@@ -682,19 +661,22 @@ class VisionTransformer(nn.Module):
 @torch.jit.script
 def select_rows(valid_nums, non_valid_nums, pad_nums, valid_row_idx, non_valid_row_idx, max_image_len):
     select = list()
-    for i, (v, nv, p) in enumerate(zip(valid_nums, non_valid_nums, pad_nums)):
-            if p <= 0:
-                valid_choice = torch.multinomial(torch.ones(v).float(), max_image_len)
-                select.append(valid_row_idx[i][valid_choice])
-            else:
-                pad_choice = torch.multinomial(
-                    torch.ones(nv).float(), p, replacement=True
-                )
-                select.append(
-                    torch.cat(
-                        [valid_row_idx[i], non_valid_row_idx[i][pad_choice]], dim=0,
-                    )
-                )
+
+    print("pad nums: ", pad_nums)
+    print("max image len: ", max_image_len)
+
+    if pad_nums <= 0:
+        valid_choice = torch.multinomial(torch.ones(valid_nums).float(), max_image_len)
+        select.append(valid_row_idx[valid_choice])
+    else:
+        pad_choice = torch.multinomial(
+            torch.ones(non_valid_nums).float(), pad_nums, replacement=True
+        )
+        select.append(
+            torch.cat(
+                [valid_row_idx, non_valid_row_idx[pad_choice]], dim=0,
+            )
+        )
     return select
 
 @torch.jit.script
