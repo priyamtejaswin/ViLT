@@ -79,6 +79,6 @@ def main(_config):
     # model.setup("test")
     # model.eval()
     
-    trace_model = torch.jit.script(model, batch)
+    trace_model = torch.jit.trace(model, batch)
     # trace_model = torch.jit.trace(model, example_inputs = (encoding['input_ids'], encoding['token_type_ids'], encoding['attention_mask'], 
     #                                   encoding['pixel_values'], encoding['pixel_mask']))
