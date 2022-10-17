@@ -44,8 +44,8 @@ def main(_config):
     ) as url:
         id2ans = json.loads(url.read().decode())
 
-    url = "https://computing.ece.vt.edu/~harsh/visualAttention/ProjectWebpage/Figures/vqa_2.png"
-    text = "How many slices of pizza are there?"
+    url = "https://computing.ece.vt.edu/~harsh/visualAttention/ProjectWebpage/Figures/vqa_3.png"
+    text = "Does it appear to be rainy?"
     res = requests.get(url)
     image = Image.open(io.BytesIO(res.content)).convert("RGB")
     img = pixelbert_transform(size=384)(image)
@@ -84,13 +84,22 @@ def main(_config):
     model = ViLTransformerSS(_config, text_embeddings, bert_config)
     model.setup("test")
     model.eval()
+
+    logits = model(batch)
+    print(logits)
+    answer = id2ans[str(logits.argmax().item())]
+    print(answer)
     
     trace_model = torch.jit.trace(model, batch)
     # trace_model = torch.jit.trace(model, example_inputs = (encoding['input_ids'], encoding['token_type_ids'], encoding['attention_mask'], 
     #                                   encoding['pixel_values'], encoding['pixel_mask']))
 
     logits = trace_model(batch)
-    print(logits)
+
+    yes_index = [i for i in id2ans if id2ans[i]=="yes"][0]
+    print(yes_index)
+    print(logits.max())
+    print(logits.detach().numpy()[0,int(yes_index)])
     answer = id2ans[str(logits.argmax().item())]
     print(answer)
     

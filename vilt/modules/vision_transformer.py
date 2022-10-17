@@ -310,7 +310,7 @@ class Attention(nn.Module):
         B, N, C = x.shape
         qkv = (
             self.qkv(x)
-            .reshape(B, N, 3, self.num_heads, C // self.num_heads)
+            .reshape(B, N, 3, self.num_heads, torch.div(C, self.num_heads, rounding_mode='floor'))
             .permute(2, 0, 3, 1, 4)
         )
         q, k, v = (
