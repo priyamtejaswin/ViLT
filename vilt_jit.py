@@ -8,7 +8,8 @@ from transformers import ViltProcessor, ViltForQuestionAnswering
 from transformers.models.bert.modeling_bert import BertConfig, BertEmbeddings
 from vilt.modules import heads, objectives, vilt_utils
 from torchvision import transforms
-
+import json
+import urllib
 
 from vilt.transforms import pixelbert_transform
 from vilt.datamodules.datamodule_base import get_pretrained_tokenizer
@@ -37,6 +38,11 @@ def main(_config):
     }
 
     print(_config)
+
+    with urllib.request.urlopen(
+        "https://github.com/dandelin/ViLT/releases/download/200k/vqa_dict.json"
+    ) as url:
+        id2ans = json.loads(url.read().decode())
 
     url = "https://computing.ece.vt.edu/~harsh/visualAttention/ProjectWebpage/Figures/vqa_2.png"
     text = "How many slices of pizza are there?"
@@ -76,9 +82,15 @@ def main(_config):
     # print(text_embeddings(batch["text_ids"]))
 
     model = ViLTransformerSS(_config, text_embeddings, bert_config)
-    # model.setup("test")
-    # model.eval()
+    model.setup("test")
+    model.eval()
     
     trace_model = torch.jit.trace(model, batch)
     # trace_model = torch.jit.trace(model, example_inputs = (encoding['input_ids'], encoding['token_type_ids'], encoding['attention_mask'], 
     #                                   encoding['pixel_values'], encoding['pixel_mask']))
+
+    logits = trace_model(batch)
+    print(logits)
+    answer = id2ans[str(logits.argmax().item())]
+    print(answer)
+    

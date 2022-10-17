@@ -120,35 +120,40 @@ class ViLTransformerSS(pl.LightningModule):
             x[:, text_embeds.shape[1] :],
         )
         cls_feats = self.pooler(x)
+        return cls_feats
 
-        ret = {
-            "text_feats": text_feats,
-            "image_feats": image_feats,
-            "cls_feats": cls_feats,
-            "raw_cls_feats": x[:, 0],
-            "image_labels": image_labels,
-            "image_masks": image_masks,
-            "text_labels": text_labels,
-            "text_ids": text_ids,
-            "text_masks": text_masks,
-            "patch_index": patch_index,
-        }
+        # ret = {
+        #     # "text_feats": text_feats,
+        #     # "image_feats": image_feats,
+        #     "cls_feats": cls_feats,
+        #     # "raw_cls_feats": x[:, 0],
+        #     # "image_labels": image_labels,
+        #     # "image_masks": image_masks,
+        #     # "text_labels": text_labels,
+        #     # "text_ids": text_ids,
+        #     # "text_masks": text_masks,
+        #     # "patch_index": patch_index,
+        # }
 
-        return ret
+        # return ret
 
     def forward(self, batch):
-        ret = dict()
-        if len(self.current_tasks) == 0:
-            res = self.infer(batch)
-            print("about to return")
-            ret.update(res)
-            return ret
 
-        # Visual Question Answering
-        if "vqa" in self.current_tasks:
-            ret.update(objectives.compute_vqa(self, batch))
+        logits = self.infer(batch)
+        return self.vqa_classifier(logits)
 
-        return ret
+        #ret = dict()
+        #if len(self.current_tasks) == 0:
+        #    res = self.infer(batch)
+        #     print("about to return")
+        #     ret.update(res)
+        #     return ret
+
+        # # Visual Question Answering
+        # if "vqa" in self.current_tasks:
+        #     ret.update(objectives.compute_vqa(self, batch))
+
+        # return ret
 
     def training_step(self, batch, batch_idx):
         vilt_utils.set_task(self)
