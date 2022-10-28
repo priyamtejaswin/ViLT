@@ -25,6 +25,8 @@ from vilt.modules import ViLTransformerSS
 @ex.automain
 def main(_config):
     _config = copy.deepcopy(_config)
+    _config["test_only"] = True
+    _config["load_path"] = "/Users/priyamtejaswin/CMU/Capstone/ViLT/weights/vilt_vqa.ckpt"
 
     loss_names = {
         "itm": 0,
@@ -44,8 +46,8 @@ def main(_config):
     ) as url:
         id2ans = json.loads(url.read().decode())
 
-    url = "https://computing.ece.vt.edu/~harsh/visualAttention/ProjectWebpage/Figures/vqa_3.png"
-    text = "Does it appear to be rainy?"
+    url = "https://computing.ece.vt.edu/~harsh/visualAttention/ProjectWebpage/Figures/vqa_1.png"
+    text = "What is the mustache made of?"
     res = requests.get(url)
     image = Image.open(io.BytesIO(res.content)).convert("RGB")
     img = pixelbert_transform(size=384)(image)

@@ -23,4 +23,10 @@ Our goal is to implement the optimizations discussed in MobiVQA on top of the Vi
 
 The `HelloWorld` directory links to android app submodule -- <https://github.com/priyamtejaswin/HelloWorld>. This app can be built and tested on Android Studio independently. So far, it implements the Question Preprocessor (which needed to be implemented in pure Java).
 
+# Setup and eval
+
+Ensure you have the ViLT VQA2 checkpoint downloaded to the `./weights` directory.
+
+Also ensure that the model is in `test` mode.
+
 -- Priyam, Rishubh, Bi
