@@ -16,6 +16,7 @@ from vilt.datamodules.datamodule_base import get_pretrained_tokenizer
 
 import requests
 import torch
+import os
 
 from PIL import Image
 
@@ -26,7 +27,8 @@ from vilt.modules import ViLTransformerSS
 def main(_config):
     _config = copy.deepcopy(_config)
     _config["test_only"] = True
-    _config["load_path"] = "/Users/priyamtejaswin/CMU/Capstone/ViLT/weights/vilt_vqa.ckpt"
+    _config["load_path"] = "./weights/vilt_vqa.ckpt"
+    assert os.path.exists(_config["load_path"]) and os.path.isfile(_config["load_path"])
 
     loss_names = {
         "itm": 0,
