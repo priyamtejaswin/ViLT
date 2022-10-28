@@ -48,8 +48,8 @@ def main(_config):
     ) as url:
         id2ans = json.loads(url.read().decode())
 
-    url = "https://computing.ece.vt.edu/~harsh/visualAttention/ProjectWebpage/Figures/vqa_1.png"
-    text = "What is the mustache made of?"
+    url = "https://media.istockphoto.com/photos/joyful-dog-playing-with-whip-while-walking-on-green-field-picture-id1187003477?k=20&m=1187003477&s=612x612&w=0&h=fvUFuwvTZWEJjk8HUU80-zvaI4gg9szPGJ2RdASH72s="
+    text = "How many dogs are there in this picture?"
     res = requests.get(url)
     image = Image.open(io.BytesIO(res.content)).convert("RGB")
     img = pixelbert_transform(size=384)(image)
@@ -58,6 +58,7 @@ def main(_config):
 
     batch = {"text": [text], "image": img}
     encoded = tokenizer(batch["text"])
+    print(encoded)
     batch["text"] = torch.tensor(encoded["input_ids"])
     batch["text_ids"] = torch.tensor(encoded["input_ids"])
     batch["text_labels"] = torch.tensor(encoded["input_ids"])
@@ -106,4 +107,17 @@ def main(_config):
     print(logits.detach().numpy()[0,int(yes_index)])
     answer = id2ans[str(logits.argmax().item())]
     print(answer)
+
+    print("Generating bertids for texts ...")
+    for t in [
+        "is this pizza vegetarian?",
+        "Is this pizza vegetarian?",
+        "how many dogs are there in this picture ?",
+        "How many Dogs are there in this picture ?",
+        "what is next to the number 102"
+    ]:
+        ids = tokenizer([t])["input_ids"][0]
+        print(t)
+        print(ids)
+        print()
     
