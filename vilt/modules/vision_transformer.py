@@ -659,9 +659,14 @@ class VisionTransformer(nn.Module):
         return x
 
 @torch.jit.script
-def select_rows(valid_nums, non_valid_nums, pad_nums, valid_row_idx, non_valid_row_idx, max_image_len):
+def select_rows(valid_nums: int,
+                non_valid_nums: int, 
+                pad_nums: torch.Tensor, 
+                valid_row_idx: torch.Tensor, 
+                non_valid_row_idx: torch.Tensor, 
+                max_image_len: int):
     select = list()
-
+    
     print("pad nums: ", pad_nums)
     print("max image len: ", max_image_len)
 
