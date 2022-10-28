@@ -25,7 +25,7 @@ The `HelloWorld` directory links to android app submodule -- <https://github.com
 
 # Setup and eval
 
-Ensure you have the ViLT VQA2 checkpoint downloaded to the `./weights` directory.
+Ensure you have the [ViLT VQA2 checkpoint](https://github.com/dandelin/ViLT/releases/download/200k/vilt_vqa.ckpt) downloaded to the `./weights` directory.
 
 Also ensure that the model is in `test` mode.
 
