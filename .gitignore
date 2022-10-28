@@ -9,7 +9,7 @@ dropbox_uploader.sh
 *.egg-info
 dvd/datamodules/urls.py
 result
-weights/
+*.ckpt
 scripts/
 demos/
 *.pt
