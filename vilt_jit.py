@@ -49,11 +49,13 @@ def main(_config):
         id2ans = json.loads(url.read().decode())
 
     url = "https://media.istockphoto.com/photos/joyful-dog-playing-with-whip-while-walking-on-green-field-picture-id1187003477?k=20&m=1187003477&s=612x612&w=0&h=fvUFuwvTZWEJjk8HUU80-zvaI4gg9szPGJ2RdASH72s="
-    text = "How many dogs are there in this picture?"
+    text = "What is the dog doing in this picture?"
     res = requests.get(url)
     image = Image.open(io.BytesIO(res.content)).convert("RGB")
+    image = transforms.ToTensor()(image).unsqueeze_(0)
+
     img = pixelbert_transform(size=384)(image)
-    img = img.unsqueeze(0)
+    # img = img.unsqueeze(0)
     tokenizer = get_pretrained_tokenizer(_config["tokenizer"])
 
     batch = {"text": [text], "image": img}
