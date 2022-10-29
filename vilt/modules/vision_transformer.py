@@ -310,7 +310,7 @@ class Attention(nn.Module):
         B, N, C = x.shape
         qkv = (
             self.qkv(x)
-            .reshape(B, N, 3, self.num_heads, C // self.num_heads)
+            .reshape(B, N, 3, self.num_heads, torch.div(C, self.num_heads, rounding_mode='floor'))
             .permute(2, 0, 3, 1, 4)
         )
         q, k, v = (
@@ -554,12 +554,14 @@ class VisionTransformer(nn.Module):
 
         return feats, labels
 
+
+
     def visual_embed(self, _x, max_image_len=200, mask_it=False):
-        _, _, ph, pw = self.patch_embed.proj.weight.shape
 
         x = self.patch_embed(_x)
         x_mask = (_x.sum(dim=1) != 0).float()[:, None, :, :]
         x_mask = F.interpolate(x_mask, size=(x.shape[2], x.shape[3])).long()
+
         x_h = x_mask[:, 0].sum(dim=1)[:, 0]
         x_w = x_mask[:, 0].sum(dim=2)[:, 0]
 
@@ -569,21 +571,24 @@ class VisionTransformer(nn.Module):
             .transpose(1, 2)
             .view(1, C, self.patch_dim, self.patch_dim)
         )
+
+        print(spatial_pos.shape)
+
         pos_embed = torch.cat(
             [
                 F.pad(
                     F.interpolate(
-                        spatial_pos, size=(h, w), mode="bilinear", align_corners=True,
+                        spatial_pos, size=(x_h, x_w), mode="bilinear", align_corners=True,
                     ),
-                    (0, W - w, 0, H - h),
+                    (0, W - x_w, 0, H - x_h),
                 )
-                for h, w in zip(x_h, x_w)
             ],
             dim=0,
         )
 
         pos_embed = pos_embed.flatten(2).transpose(1, 2)
         x = x.flatten(2).transpose(1, 2)
+
         patch_index = (
             torch.stack(
                 torch.meshgrid(
@@ -594,66 +599,32 @@ class VisionTransformer(nn.Module):
             .expand(x_mask.shape[0], x_mask.shape[1], -1, -1, -1)
             .flatten(1, 3)
         )
+
         x_mask = x_mask.flatten(1)
 
-        if mask_it:
-            x, label = self.mask_tokens(_x, x)
-
-        if (
-            max_image_len < 0
-            or max_image_len is None
-            or not isinstance(max_image_len, int)
-        ):
-            # suppose aug is 800 x 1333, then, maximum effective res is 800 x 1333 (if one side gets bigger, the other will be constrained and be shrinked)
-            # (800 // self.patch_size) * (1333 // self.patch_size) is the maximum number of patches that single image can get.
-            # if self.patch_size = 32, 25 * 41 = 1025
-            # if res is 384 x 640, 12 * 20 = 240
-            eff = x_h * x_w
-            max_image_len = eff.max()
-        else:
-            eff = x_h * x_w
-            max_image_len = min(eff.max(), max_image_len)
+        eff = x_h * x_w
+        print("eff: ", eff)
+        print("max img len: ", max_image_len)
+        max_image_len = eff.max()
 
         valid_idx = x_mask.nonzero(as_tuple=False)
         non_valid_idx = (1 - x_mask).nonzero(as_tuple=False)
         unique_rows = valid_idx[:, 0].unique()
-        valid_row_idx = [valid_idx[valid_idx[:, 0] == u] for u in unique_rows]
-        non_valid_row_idx = [
-            non_valid_idx[non_valid_idx[:, 0] == u] for u in unique_rows
-        ]
+
+        valid_row_idx = valid_row_indices(valid_idx, unique_rows)
+        non_valid_row_idx = non_valid_row_indices(non_valid_idx, unique_rows)
 
         valid_nums = [v.size(0) for v in valid_row_idx]
         non_valid_nums = [v.size(0) for v in non_valid_row_idx]
         pad_nums = [max_image_len - v for v in valid_nums]
 
-        select = list()
-        for i, (v, nv, p) in enumerate(zip(valid_nums, non_valid_nums, pad_nums)):
-            if p <= 0:
-                valid_choice = torch.multinomial(torch.ones(v).float(), max_image_len)
-                select.append(valid_row_idx[i][valid_choice])
-            else:
-                pad_choice = torch.multinomial(
-                    torch.ones(nv).float(), p, replacement=True
-                )
-                select.append(
-                    torch.cat(
-                        [valid_row_idx[i], non_valid_row_idx[i][pad_choice]], dim=0,
-                    )
-                )
+        select = select_rows(valid_nums[0],non_valid_nums[0], pad_nums[0], valid_row_idx[0], non_valid_row_idx[0], max_image_len)
 
         select = torch.cat(select, dim=0)
         x = x[select[:, 0], select[:, 1]].view(B, -1, C)
         x_mask = x_mask[select[:, 0], select[:, 1]].view(B, -1)
         patch_index = patch_index[select[:, 0], select[:, 1]].view(B, -1, 2)
         pos_embed = pos_embed[select[:, 0], select[:, 1]].view(B, -1, C)
-
-        if mask_it:
-            label = label[select[:, 0], select[:, 1]].view(B, -1, 3)
-
-            label[x_mask == 0] = -100
-            label = torch.cat(
-                [torch.full((label.shape[0], 1, 3), -100).to(label), label,], dim=1,
-            )
 
         cls_tokens = self.cls_token.expand(B, -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
@@ -667,11 +638,8 @@ class VisionTransformer(nn.Module):
             x = self.pre_norm(x)
 
         x_mask = torch.cat([torch.ones(x_mask.shape[0], 1).to(x_mask), x_mask], dim=1)
-
-        if mask_it:
-            return x, x_mask, (patch_index, (H, W)), label
-        else:
-            return x, x_mask, (patch_index, (H, W)), None
+        
+        return x, x_mask, (patch_index, (H, W)), None
 
     def forward_features(self, _x, max_image_len=144, mask_it=False):
         x, x_mask, patch_index, label = self.visual_embed(
@@ -690,160 +658,44 @@ class VisionTransformer(nn.Module):
         x = self.head(x)
         return x
 
+@torch.jit.script
+def select_rows(valid_nums: int,
+                non_valid_nums: int, 
+                pad_nums: torch.Tensor, 
+                valid_row_idx: torch.Tensor, 
+                non_valid_row_idx: torch.Tensor, 
+                max_image_len: int):
+    select = list()
+    
+    print("pad nums: ", pad_nums)
+    print("max image len: ", max_image_len)
 
-class DistilledVisionTransformer(VisionTransformer):
-    """ Vision Transformer with distillation token.
-
-    Paper: `Training data-efficient image transformers & distillation through attention` -
-        https://arxiv.org/abs/2012.12877
-
-    This impl of distilled ViT is taken from https://github.com/facebookresearch/deit
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.dist_token = nn.Parameter(torch.zeros(1, 1, self.embed_dim))
-        num_patches = self.patch_embed.num_patches
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 2, self.embed_dim))
-
-        trunc_normal_(self.dist_token, std=0.02)
-        trunc_normal_(self.pos_embed, std=0.02)
-
-    def visual_embed(self, _x, max_image_len=200, mask_it=False):
-        _, _, ph, pw = self.patch_embed.proj.weight.shape
-
-        x = self.patch_embed(_x)
-        x_mask = (_x.sum(dim=1) != 0).float()[:, None, :, :]
-        x_mask = F.interpolate(x_mask, size=(x.shape[2], x.shape[3])).long()
-        x_h = x_mask[:, 0].sum(dim=1)[:, 0]
-        x_w = x_mask[:, 0].sum(dim=2)[:, 0]
-
-        B, C, H, W = x.shape
-        spatial_pos = (
-            self.pos_embed[:, 2:, :]
-            .transpose(1, 2)
-            .view(1, C, self.patch_dim, self.patch_dim)
+    if pad_nums <= 0:
+        valid_choice = torch.multinomial(torch.ones(valid_nums).float(), max_image_len)
+        select.append(valid_row_idx[valid_choice])
+    else:
+        pad_choice = torch.multinomial(
+            torch.ones(non_valid_nums).float(), pad_nums, replacement=True
         )
-        pos_embed = torch.cat(
-            [
-                F.pad(
-                    F.interpolate(
-                        spatial_pos, size=(h, w), mode="bilinear", align_corners=True,
-                    ),
-                    (0, W - w, 0, H - h),
-                )
-                for h, w in zip(x_h, x_w)
-            ],
-            dim=0,
+        select.append(
+            torch.cat(
+                [valid_row_idx, non_valid_row_idx[pad_choice]], dim=0,
+            )
         )
+    return select
 
-        pos_embed = pos_embed.flatten(2).transpose(1, 2)
-        x = x.flatten(2).transpose(1, 2)
-        patch_index = (
-            torch.stack(
-                torch.meshgrid(
-                    torch.arange(x_mask.shape[-2]), torch.arange(x_mask.shape[-1])
-                ),
-                dim=-1,
-            )[None, None, :, :, :]
-            .expand(x_mask.shape[0], x_mask.shape[1], -1, -1, -1)
-            .flatten(1, 3)
-        )
-        x_mask = x_mask.flatten(1)
+@torch.jit.script
+def valid_row_indices(valid_idx, unique_rows):
+    valid_row_idx = [valid_idx[valid_idx[:, 0] == u] for u in unique_rows]
+    return valid_row_idx
 
-        if mask_it:
-            x, label = self.mask_tokens(_x, x)
 
-        if (
-            max_image_len < 0
-            or max_image_len is None
-            or not isinstance(max_image_len, int)
-        ):
-            # suppose aug is 800 x 1333, then, maximum effective res is 800 x 1333 (if one side gets bigger, the other will be constrained and be shrinked)
-            # (800 // self.patch_size) * (1333 // self.patch_size) is the maximum number of patches that single image can get.
-            # if self.patch_size = 32, 25 * 41 = 1025
-            # if res is 384 x 640, 12 * 20 = 240
-            eff = x_h * x_w
-            max_image_len = eff.max()
-        else:
-            eff = x_h * x_w
-            max_image_len = min(eff.max(), max_image_len)
-
-        valid_idx = x_mask.nonzero(as_tuple=False)
-        non_valid_idx = (1 - x_mask).nonzero(as_tuple=False)
-        unique_rows = valid_idx[:, 0].unique()
-        valid_row_idx = [valid_idx[valid_idx[:, 0] == u] for u in unique_rows]
-        non_valid_row_idx = [
+@torch.jit.script
+def non_valid_row_indices(non_valid_idx, unique_rows):
+    non_valid_row_idx = [
             non_valid_idx[non_valid_idx[:, 0] == u] for u in unique_rows
         ]
-
-        valid_nums = [v.size(0) for v in valid_row_idx]
-        non_valid_nums = [v.size(0) for v in non_valid_row_idx]
-        pad_nums = [max_image_len - v for v in valid_nums]
-
-        select = list()
-        for i, (v, nv, p) in enumerate(zip(valid_nums, non_valid_nums, pad_nums)):
-            if p <= 0:
-                valid_choice = torch.multinomial(torch.ones(v).float(), max_image_len)
-                select.append(valid_row_idx[i][valid_choice])
-            else:
-                pad_choice = torch.multinomial(
-                    torch.ones(nv).float(), p, replacement=True
-                )
-                select.append(
-                    torch.cat(
-                        [valid_row_idx[i], non_valid_row_idx[i][pad_choice]], dim=0,
-                    )
-                )
-
-        select = torch.cat(select, dim=0)
-        x = x[select[:, 0], select[:, 1]].view(B, -1, C)
-        x_mask = x_mask[select[:, 0], select[:, 1]].view(B, -1)
-        patch_index = patch_index[select[:, 0], select[:, 1]].view(B, -1, 2)
-        pos_embed = pos_embed[select[:, 0], select[:, 1]].view(B, -1, C)
-        if mask_it:
-            label = label[select[:, 0], select[:, 1]].view(B, -1, 3)
-
-            label[x_mask == 0] = -100
-            label = torch.cat(
-                [torch.full((label.shape[0], 1, 3), -100).to(label), label,], dim=1,
-            )
-
-        cls_tokens = self.cls_token.expand(B, -1, -1)
-        dist_token = self.dist_token.expand(B, -1, -1)
-        x = torch.cat((cls_tokens, dist_token, x), dim=1)
-        pos_embed = torch.cat(
-            (self.pos_embed[:, :2, :].expand(B, -1, -1), pos_embed), dim=1
-        )
-        x = x + pos_embed
-        x = self.pos_drop(x)
-
-        if self.add_norm_before_transformer:
-            x = self.pre_norm(x)
-
-        x_mask = torch.cat([torch.ones(x_mask.shape[0], 2).to(x_mask), x_mask], dim=1)
-
-        if mask_it:
-            return x, x_mask, (patch_index, (H, W)), label
-        else:
-            return x, x_mask, (patch_index, (H, W)), None
-
-    def forward_features(self, _x, max_image_len=144, mask_it=False):
-        x, x_mask, patch_index, label = self.visual_embed(
-            _x, max_image_len=max_image_len, mask_it=mask_it
-        )
-
-        for blk in self.blocks:
-            x, _ = blk(x, mask=x_mask)
-
-        x = self.norm(x)
-        return x, x_mask, label
-
-    def forward(self, x, max_image_len=-1):
-        x, _, _ = self.forward_features(x, max_image_len=max_image_len)
-        x = x[:, 0]
-        x = self.head(x)
-        return x
+    return non_valid_row_idx
 
 
 def resize_pos_embed(posemb, posemb_new):

@@ -2,7 +2,6 @@ from sacred import Experiment
 
 ex = Experiment("ViLT")
 
-
 def _loss_names(d):
     ret = {
         "itm": 0,

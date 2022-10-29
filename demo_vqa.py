@@ -11,6 +11,9 @@ import urllib.request
 
 import ipdb
 
+from transformers.models.bert.modeling_bert import BertConfig, BertEmbeddings
+from vilt.modules import heads, objectives, vilt_utils
+
 from PIL import Image
 
 from vilt.config import ex
@@ -47,7 +50,21 @@ def main(_config):
         }
     )
 
-    model = ViLTransformerSS(_config)
+    bert_config = BertConfig(
+            vocab_size=_config["vocab_size"],
+            hidden_size=_config["hidden_size"],
+            num_hidden_layers=_config["num_layers"],
+            num_attention_heads=_config["num_heads"],
+            intermediate_size=_config["hidden_size"] * _config["mlp_ratio"],
+            max_position_embeddings=_config["max_text_len"],
+            hidden_dropout_prob=_config["drop_rate"],
+            attention_probs_dropout_prob=_config["drop_rate"],
+    )
+
+    text_embeddings = BertEmbeddings(bert_config)
+    text_embeddings.apply(objectives.init_weights)
+
+    model = ViLTransformerSS(_config, text_embeddings=text_embeddings, bert_config=bert_config)
     model.setup("test")
     model.eval()
 
@@ -63,7 +80,7 @@ def main(_config):
         except:
             return False
 
-        batch = {"text": [text], "image": [img]}
+        batch = {"text": [text], "image": img}
 
         with torch.no_grad():
             encoded = tokenizer(batch["text"])

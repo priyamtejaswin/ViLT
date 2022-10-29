@@ -2,22 +2,21 @@ from torchvision import transforms
 import torchvision.transforms.functional as F
 # from PIL import Image
 import torch.nn as nn
+from PIL import Image
 
 
-class MinMaxResize(nn.Module):
+class MinMaxResize:
     def __init__(self, shorter=800, longer=1333):
-        super().__init__()
         self.min = shorter
         self.max = longer
 
-    # def __call__(self, x):
     def forward(self, x):
         w, h = x.shape[2], x.shape[3]
         scale = self.min / min(w, h)
         if h < w:
-            newh, neww = float(self.min), scale * w
+            newh, neww = self.min, scale * w
         else:
-            newh, neww = scale * h, float(self.min)
+            newh, neww = scale * h, self.min
 
         if max(newh, neww) > self.max:
             scale = self.max / max(newh, neww)
@@ -49,13 +48,13 @@ class UnNormalize(object):
         return tensor
 
 
-# # This is simple maximum entropy normalization performed in Inception paper
-# inception_normalize = transforms.Compose(
-#     [transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])]
-# )
+# This is simple maximum entropy normalization performed in Inception paper
+inception_normalize = transforms.Compose(
+    [transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])]
+)
 
-# # ViT uses simple non-biased inception normalization
-# # https://github.com/google-research/vision_transformer/blob/master/vit_jax/input_pipeline.py#L132
-# inception_unnormalize = transforms.Compose(
-#     [UnNormalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])]
-# )
+# ViT uses simple non-biased inception normalization
+# https://github.com/google-research/vision_transformer/blob/master/vit_jax/input_pipeline.py#L132
+inception_unnormalize = transforms.Compose(
+    [UnNormalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])]
+)
