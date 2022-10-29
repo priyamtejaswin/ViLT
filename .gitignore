@@ -16,3 +16,4 @@ demos/
 *.ptl
 *.ipynb_checkpoints/
 .DS_Store
+*.npy
