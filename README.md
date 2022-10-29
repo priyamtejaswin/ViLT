@@ -29,4 +29,15 @@ Ensure you have the [ViLT VQA2 checkpoint](https://github.com/dandelin/ViLT/rele
 
 Also ensure that the model is in `test` mode.
 
+Check that the Android App source (`HelloWorld`) is at the latest commit.
+
+* `git submodule update --init`
+* `git submodule update --remote --merge`
+
+If you have the latest changes, the last command should not show any updates in `git status`.
+
+To check functionality and correctness, run `python vilt_jit.py`
+
+To prepare Torchscript files for the app, run `generate_assets.py`. This will save all Torchscript assets to `HelloWorld/app/src/main/assets/`.
+
 -- Priyam, Rishubh, Bi
