@@ -10,8 +10,8 @@ class MinMaxResize:
         self.min = shorter
         self.max = longer
 
-    def __call__(self, x):
-        w, h = x.size
+    def forward(self, x):
+        w, h = x.shape[2], x.shape[3]
         scale = self.min / min(w, h)
         if h < w:
             newh, neww = self.min, scale * w
@@ -26,7 +26,8 @@ class MinMaxResize:
         newh, neww = int(newh + 0.5), int(neww + 0.5)
         newh, neww = newh // 32 * 32, neww // 32 * 32
 
-        return x.resize((neww, newh), resample=Image.BICUBIC)
+        # return x.resize((neww, newh), resample=Image.BICUBIC)
+        return F.resize(x, size=[neww, newh], interpolation=transforms.InterpolationMode.BICUBIC)
 
 
 class UnNormalize(object):
