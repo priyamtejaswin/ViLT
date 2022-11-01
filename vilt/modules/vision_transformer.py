@@ -572,7 +572,7 @@ class VisionTransformer(nn.Module):
             .view(1, C, self.patch_dim, self.patch_dim)
         )
 
-        print(spatial_pos.shape)
+        # print(spatial_pos.shape)
 
         pos_embed = torch.cat(
             [
@@ -603,8 +603,8 @@ class VisionTransformer(nn.Module):
         x_mask = x_mask.flatten(1)
 
         eff = x_h * x_w
-        print("eff: ", eff)
-        print("max img len: ", max_image_len)
+        # print("eff: ", eff)
+        # print("max img len: ", max_image_len)
         max_image_len = eff.max()
 
         valid_idx = x_mask.nonzero(as_tuple=False)
@@ -667,8 +667,8 @@ def select_rows(valid_nums: int,
                 max_image_len: int):
     select = list()
     
-    print("pad nums: ", pad_nums)
-    print("max image len: ", max_image_len)
+    # print("pad nums: ", pad_nums)
+    # print("max image len: ", max_image_len)
 
     if pad_nums <= 0:
         valid_choice = torch.multinomial(torch.ones(valid_nums).float(), max_image_len)
