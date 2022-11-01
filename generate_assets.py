@@ -73,14 +73,14 @@ def main(_config):
     print("Optimizing.")
     opt_traced_model = optimize_for_mobile(traced_model)
     opt_traced_model._save_for_lite_interpreter(
-        os.path.join(ASSETS_PATH, "opt_traced_vilt.ptl")
+        os.path.join(ASSETS_PATH, "optTracedVilt.ptl")
     )
     print("Done.")
 
     print("Scripting pixelbert transform.")
     traced_pixelbert = torch.jit.script(pixelbert_transform(384))
     traced_pixelbert._save_for_lite_interpreter(
-        os.path.join(ASSETS_PATH, "opt_pixelbert_transform.ptl")
+        os.path.join(ASSETS_PATH, "optPixelbertTransform.ptl")
     )
     print("Done.")
 
