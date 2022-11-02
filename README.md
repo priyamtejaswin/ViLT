@@ -40,4 +40,6 @@ To check functionality and correctness, run `python vilt_jit.py`
 
 To prepare Torchscript files for the app, run `generate_assets.py`. This will save all Torchscript assets to `HelloWorld/app/src/main/assets/`.
 
+ViLT is fine-tuned on VQA2 as a classification problem. Download the dict to assets -- <https://github.com/dandelin/ViLT/releases/download/200k/vqa_dict.json>
+
 -- Priyam, Rishubh, Bi
