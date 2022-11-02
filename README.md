@@ -21,7 +21,7 @@ Our goal is to implement the optimizations discussed in MobiVQA on top of the Vi
 
 # Android app
 
-The `HelloWorld` directory links to android app submodule -- <https://github.com/priyamtejaswin/HelloWorld>. This app can be built and tested on Android Studio independently. So far, it implements the Question Preprocessor (which needed to be implemented in pure Java).
+The `HelloWorld` directory links to android app submodule -- <https://github.com/priyamtejaswin/HelloWorld>. Refer to **Setup and eval** below before building the app. The app uses a Java implementation of the BERT pre-processor for the question (adapted from [this repo](https://github.com/huggingface/tflite-android-transformers/blob/master/bert/src/main/java/co/huggingface/android_transformers/bertqa/tokenization/FullTokenizer.java)). The image is pre-processed using PyTorch code, exported via Torchscipt. These are passed to the ViLT model (also exported using Torchscipt).
 
 # Setup and eval
 
