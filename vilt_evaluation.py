@@ -103,31 +103,36 @@ def main(_config):
 
         for question in questions:
 
-            count += 1
-            print(count)
+            try:
+                count += 1
+                print(count)
 
-            image_id = question['image_id']
-            text = question['question']
-            question_id = question['question_id']
-            image_path = 'data/test2015/COCO_test2015_000000' + str(image_id).rjust(6, '0') + '.jpg'
-            image = Image.open(image_path)
-            image = transforms.ToTensor()(image).unsqueeze_(0)
-            img = pixelbert_transform(size=384)(image)
-            batch = {"text": [text], "image": img}
-            encoded = tokenizer(batch["text"])
-            #print(encoded)
-            batch["text"] = torch.tensor(encoded["input_ids"])
-            batch["text_ids"] = torch.tensor(encoded["input_ids"])
-            batch["text_labels"] = torch.tensor(encoded["input_ids"])
-            batch["text_masks"] = torch.tensor(encoded["attention_mask"])
+                image_id = question['image_id']
+                text = question['question']
+                question_id = question['question_id']
+                image_path = 'data/test2015/COCO_test2015_000000' + str(image_id).rjust(6, '0') + '.jpg'
+                image = Image.open(image_path)
+                image = transforms.ToTensor()(image).unsqueeze_(0)
+                img = pixelbert_transform(size=384)(image)
+                batch = {"text": [text], "image": img}
+                encoded = tokenizer(batch["text"])
+                #print(encoded)
+                batch["text"] = torch.tensor(encoded["input_ids"])
+                batch["text_ids"] = torch.tensor(encoded["input_ids"])
+                batch["text_labels"] = torch.tensor(encoded["input_ids"])
+                batch["text_masks"] = torch.tensor(encoded["attention_mask"])
 
-            logits = model(batch)
-            #print(logits)
-            answer = id2ans[str(logits.argmax().item())]
-            #print(answer)
-            answers_base.append(
-                {"answer": answer, "question_id": question_id}
-            )
+                logits = model(batch)
+                #print(logits)
+                answer = id2ans[str(logits.argmax().item())]
+                #print(answer)
+                answers_base.append(
+                    {"answer": answer, "question_id": question_id}
+                )
+            except:
+                answers_base.append(
+                    {"answer": '0', "question_id": question_id}
+                )
 
             # logits = trace_model(batch)
             # print(logits)
