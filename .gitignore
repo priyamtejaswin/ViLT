@@ -17,3 +17,6 @@ demos/
 *.ipynb_checkpoints/
 .DS_Store
 *.npy
+dist/
+build/
+
