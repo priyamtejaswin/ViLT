@@ -21,9 +21,9 @@ Our goal is to implement the optimizations discussed in MobiVQA on top of the Vi
 
 # Android app
 
-The `HelloWorld` directory links to android app submodule -- <https://github.com/priyamtejaswin/HelloWorld>. Refer to **Setup and eval** below before building the app. The app uses a Java implementation of the BERT pre-processor for the question (adapted from [this repo](https://github.com/huggingface/tflite-android-transformers/blob/master/bert/src/main/java/co/huggingface/android_transformers/bertqa/tokenization/FullTokenizer.java)). The image is pre-processed using PyTorch code, exported via Torchscipt. These are passed to the ViLT model (also exported using Torchscipt).
+The `HelloWorld` directory links to android app submodule -- <https://github.com/priyamtejaswin/HelloWorld>. Refer to **Setup, Eval** below before building the app. The app uses a Java implementation of the BERT pre-processor for the question (adapted from [this repo](https://github.com/huggingface/tflite-android-transformers/blob/master/bert/src/main/java/co/huggingface/android_transformers/bertqa/tokenization/FullTokenizer.java)). The image is pre-processed using PyTorch code, exported via Torchscipt. These are passed to the ViLT model (also exported using Torchscipt).
 
-# Setup and eval
+# Setup
 
 Ensure you have the [ViLT VQA2 checkpoint](https://github.com/dandelin/ViLT/releases/download/200k/vilt_vqa.ckpt) downloaded to the `./weights` directory.
 
@@ -41,5 +41,21 @@ To check functionality and correctness, run `python vilt_jit.py`
 To prepare Torchscript files for the app, run `generate_assets.py`. This will save all Torchscript assets to `HelloWorld/app/src/main/assets/`.
 
 ViLT is fine-tuned on VQA2 as a classification problem. Download the dict to assets -- <https://github.com/dandelin/ViLT/releases/download/200k/vqa_dict.json>
+
+# Eval (VQA2)
+
+To evaluate the model (base, scripted, or quantized) first setup the following in a directory OUTSIDE base `../vqa2eval/`
+
+```bash
+mkdir ../vqa2eval/
+# Download validation data from the VQA website -- https://visualqa.org/download.html
+cd ../vqa2eval/
+wget --content-disposition https://s3.amazonaws.com/cvmlp/vqa/mscoco/vqa/v2_Questions_Val_mscoco.zip
+unzip v2_Questions_Val_mscoco.zip
+wget --content-disposition http://images.cocodataset.org/zips/val2014.zip
+unzip val2014.zip
+```
+
+Now, run `python vilt_evaluation.py` and wait for 20 hrs.
 
 -- Priyam, Rishubh, Bi

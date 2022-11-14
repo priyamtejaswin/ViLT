@@ -23,6 +23,8 @@ from PIL import Image
 from vilt.config import ex
 from vilt.modules import ViLTransformerSS
 
+from tqdm import tqdm
+
 @ex.automain
 def main(_config):
     _config = copy.deepcopy(_config)
@@ -81,6 +83,7 @@ def main(_config):
     text_embeddings.apply(objectives.init_weights)
 
     model = ViLTransformerSS(_config, text_embeddings, bert_config)
+    print("Created model!")
     model.setup("test")
     model.eval()
 
@@ -89,50 +92,44 @@ def main(_config):
     answer = id2ans[str(logits.argmax().item())]
     print(answer)
     
-    trace_model = torch.jit.trace(model, batch)
-    logits = trace_model(batch)
+    # trace_model = torch.jit.trace(model, batch)
+    # logits = trace_model(batch)
 
     answers_base = []
     answers_traced = []
 
-    count = 0
-
-    with open('data/v2_OpenEnded_mscoco_test-dev2015_questions.json') as f:
+    with open('../vqa2eval/v2_OpenEnded_mscoco_val2014_questions.json') as f:
         data = json.load(f)
         questions = data['questions']
 
-        for question in questions:
+        for question in tqdm(questions):
+            # try:
+            image_id = question['image_id']
+            text = question['question']
+            question_id = question['question_id']
+            image_path = '../vqa2eval/val2014/COCO_val2014_000000' + str(image_id).rjust(6, '0') + '.jpg'
+            image = Image.open(image_path)
+            image = transforms.ToTensor()(image).unsqueeze_(0)
+            img = pixelbert_transform(size=384)(image)
+            batch = {"text": [text], "image": img}
+            encoded = tokenizer(batch["text"])
+            #print(encoded)
+            batch["text"] = torch.tensor(encoded["input_ids"])
+            batch["text_ids"] = torch.tensor(encoded["input_ids"])
+            batch["text_labels"] = torch.tensor(encoded["input_ids"])
+            batch["text_masks"] = torch.tensor(encoded["attention_mask"])
 
-            try:
-                count += 1
-                print(count)
-
-                image_id = question['image_id']
-                text = question['question']
-                question_id = question['question_id']
-                image_path = 'data/test2015/COCO_test2015_000000' + str(image_id).rjust(6, '0') + '.jpg'
-                image = Image.open(image_path)
-                image = transforms.ToTensor()(image).unsqueeze_(0)
-                img = pixelbert_transform(size=384)(image)
-                batch = {"text": [text], "image": img}
-                encoded = tokenizer(batch["text"])
-                #print(encoded)
-                batch["text"] = torch.tensor(encoded["input_ids"])
-                batch["text_ids"] = torch.tensor(encoded["input_ids"])
-                batch["text_labels"] = torch.tensor(encoded["input_ids"])
-                batch["text_masks"] = torch.tensor(encoded["attention_mask"])
-
-                logits = model(batch)
-                #print(logits)
-                answer = id2ans[str(logits.argmax().item())]
-                #print(answer)
-                answers_base.append(
-                    {"answer": answer, "question_id": question_id}
-                )
-            except:
-                answers_base.append(
-                    {"answer": '0', "question_id": question_id}
-                )
+            logits = model(batch)
+            #print(logits)
+            answer = id2ans[str(logits.argmax().item())]
+            #print(answer)
+            answers_base.append(
+                {"answer": answer, "question_id": question_id}
+            )
+            # except:
+            #     answers_base.append(
+            #         {"answer": '0', "question_id": question_id}
+            #     )
 
             # logits = trace_model(batch)
             # print(logits)
