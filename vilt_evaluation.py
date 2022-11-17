@@ -108,7 +108,7 @@ def main(_config):
             text = question['question']
             question_id = question['question_id']
             image_path = '../vqa2eval/val2014/COCO_val2014_000000' + str(image_id).rjust(6, '0') + '.jpg'
-            image = Image.open(image_path)
+            image = Image.open(image_path).convert("RGB")
             image = transforms.ToTensor()(image).unsqueeze_(0)
             img = pixelbert_transform(size=384)(image)
             batch = {"text": [text], "image": img}
