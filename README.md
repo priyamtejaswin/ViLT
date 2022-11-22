@@ -58,4 +58,37 @@ unzip val2014.zip
 
 Now, run `python vilt_evaluation.py` and wait for 20 hrs.
 
+# Additional tests
+```python
+    for url, question in [
+        (
+            "https://vault.si.com/.image/ar_1:1%2Cc_fill%2Ccs_srgb%2Cfl_progressive%2Cq_auto:good%2Cw_1200/MTY5MDk4NzMyODU4NzEzNTYz/si-vault_michael-jordan4jpg.jpg",
+            "What game is being played?"
+        ),
+        (
+            "https://media.istockphoto.com/id/1193587060/photo/modern-home-interior-in-trendy-colors-of-the-year-2020.jpg?s=612x612&w=0&k=20&c=iANTpyGwY5VqKbzm7ZGTERSkokSkI8xMb_jo4uCK3oQ=",
+            "What is the color of the couch?"
+        ),
+        (
+            "https://cdn.appuals.com/wp-content/uploads/2022/04/monitor-turned-off-automatically.jpg",
+            "Is there anything on the screen?"
+        )
+    ]:
+        res = requests.get(url)
+        image = Image.open(io.BytesIO(res.content)).convert("RGB")
+        image = transforms.ToTensor()(image).unsqueeze_(0)
+
+        test_img = pbtr(image)
+        batch = {"text": [question], "image": test_img}
+        encoded = tokenizer(batch["text"])
+
+        batch["text"] = torch.tensor(encoded["input_ids"])
+        batch["text_ids"] = torch.tensor(encoded["input_ids"])
+        batch["text_labels"] = torch.tensor(encoded["input_ids"])
+        batch["text_masks"] = torch.tensor(encoded["attention_mask"])
+
+        model(batch)
+        trace_model(batch)
+```
+
 -- Priyam, Rishubh, Bi
