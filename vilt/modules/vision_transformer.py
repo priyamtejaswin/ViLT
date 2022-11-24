@@ -40,6 +40,8 @@ from timm.models.resnetv2 import ResNetV2
 from timm.models.registry import register_model
 from torchvision import transforms
 
+from typing import Optional
+
 _logger = logging.getLogger(__name__)
 
 
@@ -286,43 +288,29 @@ class Mlp(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(
-        self,
-        dim,
-        num_heads=8,
-        qkv_bias=False,
-        qk_scale=None,
-        attn_drop=0.0,
-        proj_drop=0.0,
-    ):
+    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0.):
         super().__init__()
+        assert dim % num_heads == 0, 'dim should be divisible by num_heads'
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
-        self.scale = qk_scale or head_dim ** -0.5
+        self.scale = head_dim ** -0.5
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x, mask=None):
+    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None):
         B, N, C = x.shape
-        qkv = (
-            self.qkv(x)
-            .reshape(B, N, 3, self.num_heads, torch.div(C, self.num_heads, rounding_mode='floor'))
-            .permute(2, 0, 3, 1, 4)
-        )
-        q, k, v = (
-            qkv[0],
-            qkv[1],
-            qkv[2],
-        )  # make torchscript happy (cannot use tensor as tuple)
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv.unbind(0)   # make torchscript happy (cannot use tensor as tuple)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
         if mask is not None:
-            mask = mask.bool()
+            # mask = mask.bool()
+            mask = mask.to(torch.bool)
             attn = attn.masked_fill(~mask[:, None, None, :], float("-inf"))
+
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
@@ -333,45 +321,51 @@ class Attention(nn.Module):
 
 
 class Block(nn.Module):
+
     def __init__(
-        self,
-        dim,
-        num_heads,
-        mlp_ratio=4.0,
-        qkv_bias=False,
-        qk_scale=None,
-        drop=0.0,
-        attn_drop=0.0,
-        drop_path=0.0,
-        act_layer=nn.GELU,
-        norm_layer=nn.LayerNorm,
+            self,
+            dim,
+            num_heads,
+            mlp_ratio=4.,
+            qkv_bias=False,
+            drop=0.,
+            attn_drop=0.,
+            init_values=None,
+            drop_path=0.,
+            act_layer=nn.GELU,
+            norm_layer=nn.LayerNorm
     ):
         super().__init__()
         self.norm1 = norm_layer(dim)
-        self.attn = Attention(
-            dim,
-            num_heads=num_heads,
-            qkv_bias=qkv_bias,
-            qk_scale=qk_scale,
-            attn_drop=attn_drop,
-            proj_drop=drop,
-        )
+        self.attn = Attention(dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop)
+        self.ls1 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
-        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
-        self.norm2 = norm_layer(dim)
-        mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(
-            in_features=dim,
-            hidden_features=mlp_hidden_dim,
-            act_layer=act_layer,
-            drop=drop,
-        )
+        self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-    def forward(self, x, mask=None):
+        self.norm2 = norm_layer(dim)
+        self.mlp = Mlp(in_features=dim, hidden_features=int(dim * mlp_ratio), act_layer=act_layer, drop=drop)
+        self.ls2 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
+        self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+
+    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor]=None):
+        # x = x + self.drop_path1(self.ls1(self.attn(self.norm1(x))))
+        # x = x + self.drop_path2(self.ls2(self.mlp(self.norm2(x))))
+        # return x
         _x, attn = self.attn(self.norm1(x), mask=mask)
-        x = x + self.drop_path(_x)
-        x = x + self.drop_path(self.mlp(self.norm2(x)))
+        x = x + self.drop_path1(_x)
+        x = x + self.drop_path2(self.mlp(self.norm2(x)))
         return x, attn
+
+
+
+class LayerScale(nn.Module):
+    def __init__(self, dim, init_values=1e-5, inplace=False):
+        super().__init__()
+        self.inplace = inplace
+        self.gamma = nn.Parameter(init_values * torch.ones(dim))
+
+    def forward(self, x):
+        return x.mul_(self.gamma) if self.inplace else x * self.gamma
 
 
 class PatchEmbed(nn.Module):
@@ -481,6 +475,8 @@ class VisionTransformer(nn.Module):
 
         if add_norm_before_transformer:
             self.pre_norm = norm_layer(embed_dim)
+        else:
+            self.pre_norm = nn.Identity()
 
         dpr = [
             x.item() for x in torch.linspace(0, drop_path_rate, depth)
@@ -492,7 +488,7 @@ class VisionTransformer(nn.Module):
                     num_heads=num_heads,
                     mlp_ratio=mlp_ratio,
                     qkv_bias=qkv_bias,
-                    qk_scale=qk_scale,
+                    # qk_scale=qk_scale,
                     drop=drop_rate,
                     attn_drop=attn_drop_rate,
                     drop_path=dpr[i],
@@ -520,6 +516,7 @@ class VisionTransformer(nn.Module):
     def no_weight_decay(self):
         return {"pos_embed", "cls_token"}
 
+    @torch.jit.ignore
     def mask_tokens(self, orig_image, feats):
         """
         Prepare masked tokens inputs/labels for masked patch prediction: 80% MASK, 10% random, 10% original.
@@ -555,8 +552,12 @@ class VisionTransformer(nn.Module):
         return feats, labels
 
 
-
-    def visual_embed(self, _x, max_image_len=200, mask_it=False):
+    # def visual_embed(
+    def forward(
+        self,
+         _x: torch.Tensor, 
+         max_image_len: int = 200, 
+         mask_it: bool = False):
 
         x = self.patch_embed(_x)
         x_mask = (_x.sum(dim=1) != 0).float()[:, None, :, :]
@@ -564,6 +565,9 @@ class VisionTransformer(nn.Module):
 
         x_h = x_mask[:, 0].sum(dim=1)[:, 0]
         x_w = x_mask[:, 0].sum(dim=2)[:, 0]
+
+        x_h = int(x_h.item())
+        x_w = int(x_w.item())
 
         B, C, H, W = x.shape
         spatial_pos = (
@@ -605,11 +609,14 @@ class VisionTransformer(nn.Module):
         eff = x_h * x_w
         # print("eff: ", eff)
         # print("max img len: ", max_image_len)
-        max_image_len = eff.max()
+        # print(type(eff))
+        # max_image_len = eff.max()
+        max_image_len = eff
 
-        valid_idx = x_mask.nonzero(as_tuple=False)
-        non_valid_idx = (1 - x_mask).nonzero(as_tuple=False)
-        unique_rows = valid_idx[:, 0].unique()
+        valid_idx = x_mask.nonzero()
+        non_valid_idx = (1 - x_mask).nonzero()
+        # unique_rows = valid_idx[:, 0].unique()
+        unique_rows = torch._unique(valid_idx[:, 0])[0]
 
         valid_row_idx = valid_row_indices(valid_idx, unique_rows)
         non_valid_row_idx = non_valid_row_indices(non_valid_idx, unique_rows)
@@ -634,13 +641,14 @@ class VisionTransformer(nn.Module):
         x = x + pos_embed
         x = self.pos_drop(x)
 
-        if self.add_norm_before_transformer:
-            x = self.pre_norm(x)
+        # if self.add_norm_before_transformer:
+        x = self.pre_norm(x)
 
         x_mask = torch.cat([torch.ones(x_mask.shape[0], 1).to(x_mask), x_mask], dim=1)
         
         return x, x_mask, (patch_index, (H, W)), None
 
+    @torch.jit.ignore
     def forward_features(self, _x, max_image_len=144, mask_it=False):
         x, x_mask, patch_index, label = self.visual_embed(
             _x, max_image_len=max_image_len, mask_it=mask_it
@@ -652,7 +660,8 @@ class VisionTransformer(nn.Module):
         x = self.norm(x)
         return x, x_mask, label
 
-    def forward(self, x, max_image_len=-1):
+    @torch.jit.ignore
+    def ignore_forward(self, x, max_image_len=-1):
         x, _, _ = self.forward_features(x, max_image_len=max_image_len)
         x = x[:, 0]
         x = self.head(x)
@@ -661,7 +670,7 @@ class VisionTransformer(nn.Module):
 @torch.jit.script
 def select_rows(valid_nums: int,
                 non_valid_nums: int, 
-                pad_nums: torch.Tensor, 
+                pad_nums: int, 
                 valid_row_idx: torch.Tensor, 
                 non_valid_row_idx: torch.Tensor, 
                 max_image_len: int):

@@ -1,13 +1,14 @@
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-import vilt.modules.vision_transformer as vit
-
+from typing import Optional
 from vilt.modules import heads, objectives, vilt_utils
 
 
 class ViLTransformerSS(pl.LightningModule):
-    def __init__(self, config, text_embeddings, bert_config):
+    __constants__ = ["max_image_len"]
+
+    def __init__(self, config, text_embeddings, transformer):
         super().__init__()
         self.save_hyperparameters()
         
@@ -15,14 +16,17 @@ class ViLTransformerSS(pl.LightningModule):
         self.token_type_embeddings = nn.Embedding(2, config["hidden_size"])
         self.token_type_embeddings.apply(objectives.init_weights)
 
-        if self.hparams.config["load_path"] == "":
-            self.transformer = getattr(vit, self.hparams.config["vit"])(
-                pretrained=True, config=self.hparams.config
-            )
-        else:
-            self.transformer = getattr(vit, self.hparams.config["vit"])(
-                pretrained=False, config=self.hparams.config
-            )
+        self.max_image_len = self.hparams.config["max_image_len"]
+
+        # if self.hparams.config["load_path"] == "":
+        #     self.transformer = getattr(vit, self.hparams.config["vit"])(
+        #         pretrained=True, config=self.hparams.config
+        #     )
+        # else:
+        #     self.transformer = getattr(vit, self.hparams.config["vit"])(
+        #         pretrained=False, config=self.hparams.config
+        #     )
+        self.transformer = transformer
 
         self.pooler = heads.Pooler(config["hidden_size"])
         self.pooler.apply(objectives.init_weights)
@@ -60,29 +64,30 @@ class ViLTransformerSS(pl.LightningModule):
 
     def infer(
         self,
-        batch,
-        mask_text=False,
-        mask_image=False,
-        image_token_type_idx=1,
-        image_embeds=None,
-        image_masks=None,
+        text_ids,
+        text_masks,
+        img,
+        # mask_text: Optional[torch.Tensor]=False,
+        mask_image: bool=False,
+        image_token_type_idx: int=1,
+        image_embeds: Optional[torch.Tensor]=None,
+        image_masks: Optional[torch.Tensor]=None,
     ):
-        imgkey = "image"
+        # text_ids = batch["text_ids"]
+        # text_labels = batch["text_labels"]  # Not used.
+        # text_masks = batch["text_masks"]
+        # img = batch["image"]
 
-        text_ids = batch[f"text_ids"]
-        text_labels = batch[f"text_labels"]
-        text_masks = batch[f"text_masks"]
         text_embeds = self.text_embeddings(text_ids)
-
-        img = batch[imgkey]
         (
                 image_embeds,
                 image_masks,
                 patch_index,
                 image_labels,
-        ) = self.transformer.visual_embed(
+        # ) = self.transformer.visual_embed(
+        ) = self.transformer.forward(
                 img,
-                max_image_len=self.hparams.config["max_image_len"],
+                max_image_len=self.max_image_len,
                 mask_it=mask_image,
         )
 
@@ -106,10 +111,14 @@ class ViLTransformerSS(pl.LightningModule):
         cls_feats = self.pooler(x)
         return cls_feats
 
-    def forward(self, batch):
-
-        logits = self.infer(batch)
+    def forward(self, batch: dict[str, torch.Tensor]):
+        logits = self.infer(
+            batch["text_ids"],
+            batch["text_masks"],
+            batch["image"]
+        )
         return self.vqa_classifier(logits)
 
+    @torch.jit.ignore
     def configure_optimizers(self):
         return vilt_utils.set_schedule(self)

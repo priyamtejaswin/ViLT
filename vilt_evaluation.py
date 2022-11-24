@@ -7,6 +7,9 @@ import numpy as np
 # from transformers import ViltProcessor, ViltForQuestionAnswering
 from transformers.models.bert.modeling_bert import BertConfig, BertEmbeddings
 from vilt.modules import heads, objectives, vilt_utils
+import vilt.modules.vision_transformer as vit
+# import timm.models.vision_transformer as vit
+
 from torchvision import transforms
 import json
 import urllib
@@ -56,7 +59,8 @@ def main(_config):
     image = Image.open(io.BytesIO(res.content)).convert("RGB")
     image = transforms.ToTensor()(image).unsqueeze_(0)
 
-    img = pixelbert_transform(size=384)(image)
+    pbtr = pixelbert_transform(size=384)
+    img = pbtr(image)
     # img = img.unsqueeze(0)
     tokenizer = get_pretrained_tokenizer(_config["tokenizer"])
 
@@ -82,7 +86,15 @@ def main(_config):
     text_embeddings = BertEmbeddings(bert_config)
     text_embeddings.apply(objectives.init_weights)
 
-    model = ViLTransformerSS(_config, text_embeddings, bert_config)
+    # scripted_te = torch.jit.script(text_embeddings)
+
+    visiontransformer = getattr(vit, _config["vit"])(
+        pretrained=False, config=_config
+    )
+
+    # scripted_vt = torch.jit.script(visiontransformer)
+    
+    model = ViLTransformerSS(_config, text_embeddings, visiontransformer)
     print("Created model!")
     model.setup("test")
     model.eval()
@@ -93,7 +105,46 @@ def main(_config):
     print(answer)
     
     # trace_model = torch.jit.trace(model, batch)
-    # logits = trace_model(batch)
+    trace_model = torch.jit.script(model)
+    logits = trace_model(batch)
+    print(logits)
+    answer = id2ans[str(logits.argmax().item())]
+    print(answer)
+    print()
+
+    # TESTS
+    for url, question in [
+            (
+                "https://vault.si.com/.image/ar_1:1%2Cc_fill%2Ccs_srgb%2Cfl_progressive%2Cq_auto:good%2Cw_1200/MTY5MDk4NzMyODU4NzEzNTYz/si-vault_michael-jordan4jpg.jpg",
+                "What game is being played?"
+            ),
+            (
+                "https://media.istockphoto.com/id/1193587060/photo/modern-home-interior-in-trendy-colors-of-the-year-2020.jpg?s=612x612&w=0&k=20&c=iANTpyGwY5VqKbzm7ZGTERSkokSkI8xMb_jo4uCK3oQ=",
+                "What is the color of the couch?"
+            ),
+            (
+                "https://cdn.appuals.com/wp-content/uploads/2022/04/monitor-turned-off-automatically.jpg",
+                "Is there anything on the screen?"
+            )
+        ]:
+            res = requests.get(url)
+            image = Image.open(io.BytesIO(res.content)).convert("RGB")
+            image = transforms.ToTensor()(image).unsqueeze_(0)
+
+            test_img = pbtr(image)
+            batch = {"text": [question], "image": test_img}
+            encoded = tokenizer(batch["text"])
+
+            batch["text"] = torch.tensor(encoded["input_ids"])
+            batch["text_ids"] = torch.tensor(encoded["input_ids"])
+            batch["text_labels"] = torch.tensor(encoded["input_ids"])
+            batch["text_masks"] = torch.tensor(encoded["attention_mask"])
+
+            logits = model(batch)
+            print(id2ans[str(logits.argmax().item())])
+            logits = trace_model(batch)
+            print(id2ans[str(logits.argmax().item())])
+            print()
 
     answers_base = []
     answers_traced = []
