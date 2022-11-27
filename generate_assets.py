@@ -1,20 +1,21 @@
 import torch
 import copy
 import os
+from PIL import Image
+import urllib
+import json
 
 # from transformers import ViltProcessor, ViltForQuestionAnswering
 from transformers.models.bert.modeling_bert import BertConfig, BertEmbeddings
-from vilt.modules import objectives
 from torchvision import transforms
 from torch.utils.mobile_optimizer import optimize_for_mobile
 
 from vilt.transforms import pixelbert_transform
 from vilt.datamodules.datamodule_base import get_pretrained_tokenizer
-
-from PIL import Image
-
+import vilt.modules.vision_transformer as vit
 from vilt.config import ex
 from vilt.modules import ViLTransformerSS
+from vilt.modules import objectives
 
 ASSETS_PATH = "HelloWorld/app/src/main/assets"
 assert os.path.isdir(ASSETS_PATH)
@@ -26,28 +27,10 @@ def main(_config):
     _config["load_path"] = "./weights/vilt_vqa.ckpt"
     assert os.path.exists(_config["load_path"]) and os.path.isfile(_config["load_path"])
 
-    print(_config)
-    print("Preparing batch for JIT tracing.")
-
-    # url = "https://media.istockphoto.com/photos/joyful-dog-playing-with-whip-while-walking-on-green-field-picture-id1187003477?k=20&m=1187003477&s=612x612&w=0&h=fvUFuwvTZWEJjk8HUU80-zvaI4gg9szPGJ2RdASH72s="
-    # text = "What is the dog doing in this picture?"
-    # res = requests.get(url)
-    image = Image.open("HelloWorld/app/src/main/assets/helmet.jpg").convert("RGB")
-    image = transforms.ToTensor()(image).unsqueeze_(0)
-    with open("HelloWorld/app/src/main/assets/helmet.txt") as fp:
-        text = fp.read().strip()
-
-    img = pixelbert_transform(size=384)(image)
-    # img = img.unsqueeze(0)
-    tokenizer = get_pretrained_tokenizer(_config["tokenizer"])
-
-    batch = {"text": [text], "image": img}
-    encoded = tokenizer(batch["text"])
-    print(encoded)
-    batch["text"] = torch.tensor(encoded["input_ids"])
-    batch["text_ids"] = torch.tensor(encoded["input_ids"])
-    batch["text_labels"] = torch.tensor(encoded["input_ids"])
-    batch["text_masks"] = torch.tensor(encoded["attention_mask"])
+    with urllib.request.urlopen(
+        "https://github.com/dandelin/ViLT/releases/download/200k/vqa_dict.json"
+    ) as url:
+        id2ans = json.loads(url.read().decode())
 
     bert_config = BertConfig(
             vocab_size=_config["vocab_size"],
@@ -63,13 +46,18 @@ def main(_config):
     text_embeddings = BertEmbeddings(bert_config)
     text_embeddings.apply(objectives.init_weights)
 
+    visiontransformer = getattr(vit, _config["vit"])(
+        pretrained=False, config=_config
+    )
+
     print("Creating ViLT model.")
-    model = ViLTransformerSS(_config, text_embeddings, bert_config)
+    model = ViLTransformerSS(_config, text_embeddings, visiontransformer)
     model.setup("test")
     model.eval()
 
     print("Scripting.")
-    traced_model = torch.jit.trace(model, batch)
+    traced_model = torch.jit.script(model)
+
     print("Optimizing.")
     opt_traced_model = optimize_for_mobile(traced_model)
     opt_traced_model._save_for_lite_interpreter(
@@ -83,5 +71,33 @@ def main(_config):
         os.path.join(ASSETS_PATH, "optPixelbertTransform.ptl")
     )
     print("Done.")
+
+    # Running tests ...
+    print("Testing...")
+    for f in os.listdir(ASSETS_PATH):
+        if f.endswith(".jpg"):
+            image = Image.open(os.path.join(ASSETS_PATH, f)).convert("RGB")
+            image = transforms.ToTensor()(image).unsqueeze_(0)
+
+            question = f.split('.')[0] + '.txt'
+            with open(os.path.join(ASSETS_PATH, question)) as fp:
+                text = fp.read().strip()
+
+            img = traced_pixelbert(image)
+            batch = {"text": [text], "image": img}
+
+            tokenizer = get_pretrained_tokenizer(_config["tokenizer"])
+            encoded = tokenizer(batch["text"])
+
+            batch["text"] = torch.tensor(encoded["input_ids"])
+            batch["text_ids"] = torch.tensor(encoded["input_ids"])
+            batch["text_labels"] = torch.tensor(encoded["input_ids"])
+            batch["text_masks"] = torch.tensor(encoded["attention_mask"])
+
+            print("Test:", f)
+            print("Question", text)
+            logits = traced_model(batch)
+            answer = id2ans[str(logits.argmax().item())]
+            print("Answer:", answer)
 
     print("Assets saved to", ASSETS_PATH)
