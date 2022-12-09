@@ -85,8 +85,11 @@ def main(_config):
 
     text_embeddings = BertEmbeddings(bert_config)
     text_embeddings.apply(objectives.init_weights)
+    text_embeddings.eval()
 
-    # scripted_te = torch.jit.script(text_embeddings)
+    scripted_te = torch.jit.trace(text_embeddings, torch.tensor(
+        np.array([[101, 2003, 2023, 10733, 23566, 1029, 102]])
+    ))
 
     visiontransformer = getattr(vit, _config["vit"])(
         pretrained=False, config=_config
@@ -94,7 +97,8 @@ def main(_config):
 
     # scripted_vt = torch.jit.script(visiontransformer)
     
-    model = ViLTransformerSS(_config, text_embeddings, visiontransformer)
+    # model = ViLTransformerSS(_config, text_embeddings, visiontransformer)
+    model = ViLTransformerSS(_config, scripted_te, visiontransformer)
     print("Created model!")
     model.setup("test")
     model.eval()
@@ -161,7 +165,7 @@ def main(_config):
             image_path = '../vqa2eval/val2014/COCO_val2014_000000' + str(image_id).rjust(6, '0') + '.jpg'
             image = Image.open(image_path).convert("RGB")
             image = transforms.ToTensor()(image).unsqueeze_(0)
-            img = pixelbert_transform(size=384)(image)
+            img = pbtr(image)
             batch = {"text": [text], "image": img}
             encoded = tokenizer(batch["text"])
             #print(encoded)
@@ -170,25 +174,25 @@ def main(_config):
             batch["text_labels"] = torch.tensor(encoded["input_ids"])
             batch["text_masks"] = torch.tensor(encoded["attention_mask"])
 
-            logits = model(batch)
+            # logits = model(batch)
             #print(logits)
-            answer = id2ans[str(logits.argmax().item())]
+            # answer = id2ans[str(logits.argmax().item())]
             #print(answer)
-            answers_base.append(
-                {"answer": answer, "question_id": question_id}
-            )
+            # answers_base.append(
+                # {"answer": answer, "question_id": question_id}
+            # )
             # except:
             #     answers_base.append(
             #         {"answer": '0', "question_id": question_id}
             #     )
 
-            # logits = trace_model(batch)
+            logits = trace_model(batch)
             # print(logits)
-            # answer = id2ans[str(logits.argmax().item())]
+            answer = id2ans[str(logits.argmax().item())]
             # print(answer)
-            # answers_traced.append(
-            #     {"answer": answer, "question_id": question_id}
-            # )
+            answers_traced.append(
+                {"answer": answer, "question_id": question_id}
+            )
 
         with open('result-test-dev.json', 'w') as result_file:
             json.dump(answers_base, result_file)

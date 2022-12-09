@@ -4,6 +4,7 @@ import os
 from PIL import Image
 import urllib
 import json
+import numpy as np
 
 # from transformers import ViltProcessor, ViltForQuestionAnswering
 from transformers.models.bert.modeling_bert import BertConfig, BertEmbeddings
@@ -41,17 +42,24 @@ def main(_config):
             max_position_embeddings=_config["max_text_len"],
             hidden_dropout_prob=_config["drop_rate"],
             attention_probs_dropout_prob=_config["drop_rate"],
+            torchscript=True
     )
 
     text_embeddings = BertEmbeddings(bert_config)
     text_embeddings.apply(objectives.init_weights)
+    text_embeddings.eval()
+    
+    scripted_te = torch.jit.trace(text_embeddings, 
+                                  torch.tensor(
+                                      np.array([[101, 2003, 2023, 10733, 23566, 1029, 102]])))
 
     visiontransformer = getattr(vit, _config["vit"])(
         pretrained=False, config=_config
     )
 
     print("Creating ViLT model.")
-    model = ViLTransformerSS(_config, text_embeddings, visiontransformer)
+    # model = ViLTransformerSS(_config, text_embeddings, visiontransformer)
+    model = ViLTransformerSS(_config, scripted_te, visiontransformer)
     model.setup("test")
     model.eval()
 
