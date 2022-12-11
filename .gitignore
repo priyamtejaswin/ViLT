@@ -19,4 +19,4 @@ demos/
 *.npy
 dist/
 build/
-
+*__pycache__*
