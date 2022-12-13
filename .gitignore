@@ -13,4 +13,5 @@ weights/
 scripts/
 demos/
 train2014/
+val2014/
 *.zip
