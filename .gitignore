@@ -12,3 +12,5 @@ result
 weights/
 scripts/
 demos/
+train2014/
+*.zip
