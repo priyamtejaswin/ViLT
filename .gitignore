@@ -16,3 +16,5 @@ train2014/
 val2014/
 test2015/
 *.zip
+v2*.json
+*.ckpt
