@@ -298,6 +298,26 @@ def compute_imgcls(pl_module, batch):
     return ret
 
 
+def compute_lm(pl_module, batch):
+    infer = pl_module.infer(batch, mask_text=False, mask_image=False)
+    lm_logprob = infer["dec_log_prob"]  # Starts with 1st pred token
+    lm_targets = batch["topans_text_ids"][:, 1:]  # Starts with 1st target token
+    lm_loss = F.nll_loss(lm_logprob.permute(0, 2, 1), lm_targets)
+
+    ret = {
+        "lm_loss": lm_loss,
+        "lm_logprob": lm_logprob,
+        "lm_targets": lm_targets,
+    }
+
+    phase = "train" if pl_module.training else "val"
+
+    loss = getattr(pl_module, f"{phase}_lm_loss")(ret["lm_loss"])
+    pl_module.log(f"lm/{phase}/loss", loss)
+
+    return ret
+
+
 def compute_vqa(pl_module, batch):
     infer = pl_module.infer(batch, mask_text=False, mask_image=False)
     vqa_logits = pl_module.vqa_classifier(infer["cls_feats"])

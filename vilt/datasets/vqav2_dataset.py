@@ -1,4 +1,5 @@
 from .base_dataset import BaseDataset
+import numpy as np
 
 
 class VQAv2Dataset(BaseDataset):
@@ -32,10 +33,22 @@ class VQAv2Dataset(BaseDataset):
             answers = self.table["answers"][index][question_index].as_py()
             labels = self.table["answer_labels"][index][question_index].as_py()
             scores = self.table["answer_scores"][index][question_index].as_py()
+            best = np.argmax(scores)
+            # topans = [answers[best]]
+            a = answers[best]
+            e = self.tokenizer(
+                a,
+                padding="max_length",
+                truncation=True,
+                max_length=25,
+                return_special_tokens_mask=True,
+            )
+            topans = (a, e)
         else:
             answers = list()
             labels = list()
             scores = list()
+            topans = list()
 
         return {
             "image": image_tensor,
@@ -44,4 +57,5 @@ class VQAv2Dataset(BaseDataset):
             "vqa_labels": labels,
             "vqa_scores": scores,
             "qid": qid,
+            "topans_text": topans
         }

@@ -11,6 +11,7 @@ def _loss_names(d):
         "vqa": 0,
         "nlvr2": 0,
         "irtr": 0,
+        "lm": 0
     }
     ret.update(d)
     return ret
@@ -170,6 +171,21 @@ def task_finetune_vqa_randaug():
     datasets = ["vqa"]
     train_transform_keys = ["pixelbert_randaug"]
     loss_names = _loss_names({"vqa": 1})
+    batch_size = 256
+    max_epoch = 10
+    max_steps = None
+    warmup_steps = 0.1
+    draw_false_image = 0
+    learning_rate = 1e-4
+    val_check_interval = 0.1
+    lr_mult = 10
+
+@ex.named_config
+def task_finetune_lm_randaug():
+    exp_name = "finetune_vqa_randaug"
+    datasets = ["vqa"]
+    train_transform_keys = ["pixelbert_randaug"]
+    loss_names = _loss_names({"lm": 1})
     batch_size = 256
     max_epoch = 10
     max_steps = None

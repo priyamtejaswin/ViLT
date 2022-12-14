@@ -5,6 +5,25 @@ import vilt.modules.vision_transformer as vit
 
 from transformers.models.bert.modeling_bert import BertConfig, BertEmbeddings
 from vilt.modules import heads, objectives, vilt_utils
+import numpy as np
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        # self.register_buffer('pe', pe)  # TODO: breaks `ddp` strategy!
+        self.register_parameter('pe', nn.Parameter(pe, requires_grad=False))
+
+    def forward(self, x):
+        x = x + self.pe[:x.size(0), :]
+        return self.dropout(x)
 
 
 class ViLTransformerSS(pl.LightningModule):
@@ -100,6 +119,15 @@ class ViLTransformerSS(pl.LightningModule):
         vilt_utils.set_metrics(self)
         self.current_tasks = list()
 
+        # ===================== for conditional langauge generation =====================
+        self.dec_pe = PositionalEncoding(config["hidden_size"], max_len = 40)
+        dec_layer = nn.TransformerDecoderLayer(
+            config["hidden_size"], 8, config["hidden_size"], config["drop_rate"], batch_first=True
+        )
+        self.decoder = nn.TransformerDecoder(dec_layer, num_layers = 2)
+        self.dense = nn.Linear(config["hidden_size"], 30522)
+        self.log_softmax = nn.LogSoftmax(dim=-1)
+
         # ===================== load downstream (test_only) ======================
 
         if self.hparams.config["load_path"] != "" and self.hparams.config["test_only"]:
@@ -162,6 +190,18 @@ class ViLTransformerSS(pl.LightningModule):
             x, _attn = blk(x, mask=co_masks)
 
         x = self.transformer.norm(x)
+
+        # Decoder
+        tgt = batch["topans_text_ids"][:, :-1]  # Starts with <sos>
+        tgt = self.text_embeddings(tgt)  # Share embeddings with encoder
+        tgt = self.dec_pe(tgt.permute(1, 0, 2))
+        tgt = tgt.permute(1, 0, 2)
+
+        x = self.decoder(tgt, x)
+        dense = self.dense(x)
+        logprob = self.log_softmax(dense)
+        # ENDS
+
         text_feats, image_feats = (
             x[:, : text_embeds.shape[1]],
             x[:, text_embeds.shape[1] :],
@@ -179,6 +219,7 @@ class ViLTransformerSS(pl.LightningModule):
             "text_ids": text_ids,
             "text_masks": text_masks,
             "patch_index": patch_index,
+            "dec_log_prob": logprob
         }
 
         return ret
@@ -204,6 +245,10 @@ class ViLTransformerSS(pl.LightningModule):
         # Visual Question Answering
         if "vqa" in self.current_tasks:
             ret.update(objectives.compute_vqa(self, batch))
+
+        # LM Answer Generation
+        if "lm" in self.current_tasks:
+            ret.update(objectives.compute_lm(self, batch))
 
         # Natural Language for Visual Reasoning 2
         if "nlvr2" in self.current_tasks:
