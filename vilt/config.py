@@ -182,7 +182,7 @@ def task_finetune_vqa_randaug():
 
 @ex.named_config
 def task_finetune_lm_randaug():
-    exp_name = "finetune_vqa_randaug"
+    exp_name = "finetune_lm_randaug"
     datasets = ["vqa"]
     train_transform_keys = ["pixelbert_randaug"]
     loss_names = _loss_names({"lm": 1})
