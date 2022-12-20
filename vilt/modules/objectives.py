@@ -299,10 +299,31 @@ def compute_imgcls(pl_module, batch):
 
 
 def compute_lm(pl_module, batch):
-    infer = pl_module.infer(batch, mask_text=False, mask_image=False)
-    lm_logprob = infer["dec_log_prob"]  # Starts with 1st pred token
+    phase = "train" if pl_module.training else "val"
     lm_targets = batch["topans_text_ids"][:, 1:]  # Starts with 1st target token
-    lm_loss = F.nll_loss(lm_logprob.permute(0, 2, 1), lm_targets)
+
+    if phase == "train":
+        infer = pl_module.infer(batch, mask_text=False, mask_image=False)
+        lm_logprob = infer["dec_log_prob"]  # Starts with 1st pred token
+        lm_loss = F.nll_loss(lm_logprob.permute(0, 2, 1), lm_targets)
+    else:
+        lm_logprob = []
+        dec_inp = torch.full((len(lm_targets), 1), 101)  # SOS
+        eos_col = torch.full_like(dec_inp, 102)  # EOS
+
+        dec_inp = torch.concat([dec_inp, eos_col], -1)
+        for _ in range(lm_targets.shape[1]):
+            batch["topans_text_ids"] = dec_inp.to(pl_module.device)
+
+            infer = pl_module.infer(batch, mask_text=False, mask_image=False)
+            lm_logprob.append(infer["dec_log_prob"][:, -1, :])
+
+            dec_inp[:, -1] = torch.argmax(infer["dec_log_prob"][:, -1, :], -1)
+            dec_inp = torch.concat([dec_inp, eos_col], -1)
+
+        lm_logprob = torch.stack(lm_logprob, 2)  # Batch x Vocab x Seqlen
+        lm_loss = F.nll_loss(lm_logprob, lm_targets)
+        lm_logprob = lm_logprob.permute(0, 2, 1)
 
     ret = {
         "lm_loss": lm_loss,
@@ -310,10 +331,12 @@ def compute_lm(pl_module, batch):
         "lm_targets": lm_targets,
     }
 
-    phase = "train" if pl_module.training else "val"
-
     loss = getattr(pl_module, f"{phase}_lm_loss")(ret["lm_loss"])
+    accuracy = getattr(pl_module, f"{phase}_lm_accuracy")(
+        ret["lm_logprob"], ret["lm_targets"]
+    )
     pl_module.log(f"lm/{phase}/loss", loss)
+    pl_module.log(f"lm/{phase}/accuracy", accuracy)
 
     return ret
 
