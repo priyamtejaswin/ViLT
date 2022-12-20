@@ -18,3 +18,8 @@ test2015/
 *.zip
 v2*.json
 *.ckpt
+*.DS_Store
+*.ipynb_checkpoints
+*.npy
+*.ptl
+*.pt
